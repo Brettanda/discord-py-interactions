@@ -148,7 +148,8 @@ async def send(
     nonce=None,
     allowed_mentions=None,
     reference=None,
-    mention_author=None
+    mention_author=None,
+    view=None
 ):
     """|coro|
 
@@ -229,7 +230,7 @@ async def send(
     channel = await self._get_channel()
     state = self._state
     content = str(content) if content is not None else None
-    components = components or []
+
     if embed is not None:
         embed = embed.to_dict()
 
@@ -252,6 +253,14 @@ async def send(
             raise InvalidArgument(
                 "reference parameter must be Message or MessageReference"
             ) from None
+
+    if view:
+        if not hasattr(view, '__discord_ui_view__'):
+            raise InvalidArgument(f'view parameter must be View not {view.__class__!r}')
+
+        components = view.to_components()
+    else:
+        components = components or []
 
     if file is not None and files is not None:
         raise InvalidArgument("cannot pass both file and files parameter to send()")
