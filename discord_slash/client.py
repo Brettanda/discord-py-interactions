@@ -1,5 +1,6 @@
 import copy
 import logging
+import re
 import typing
 from contextlib import suppress
 from inspect import getdoc, iscoroutinefunction
@@ -410,9 +411,28 @@ class SlashCommand:
                 self.logger.debug(
                     f"Detected changes on {scope if scope is not None else 'global'}, updating them"
                 )
-                existing_cmds = await self.req.put_slash_commands(
-                    slash_commands=to_send, guild_id=scope
-                )
+                try:
+                    existing_cmds = await self.req.put_slash_commands(
+                        slash_commands=to_send, guild_id=scope
+                    )
+                except discord.HTTPException as ex:
+                    if ex.status == 400:
+                        # catch bad requests
+                        cmd_nums = set(
+                            re.findall(r"In\s(\d).", ex.args[0])
+                        )  # find all discords references to commands
+                        error_string = ex.args[0]
+
+                        for num in cmd_nums:
+                            error_command = to_send[int(num)]
+                            error_string = error_string.replace(
+                                f"In {num}",
+                                f"'{error_command.get('name')}'",
+                            )
+
+                        ex.args = (error_string,)
+
+                    raise ex
             else:
                 self.logger.debug(
                     f"Detected no changes on {scope if scope is not None else 'global'}, skipping"
@@ -876,11 +896,11 @@ class SlashCommand:
     def permission(self, guild_id: int, permissions: list):
         """
         Decorator that add permissions. This will set the permissions for a single guild, you can use it more than once for each command.
+
         :param guild_id: ID of the guild for the permissions.
         :type guild_id: int
-        :param permissions: Permission requirements of the slash command. Default ``None``.
-        :type permissions: dict
-
+        :param permissions: List of permissions to be set for the specified guild.
+        :type permissions: list
         """
 
         def wrapper(cmd):
